@@ -12,7 +12,7 @@ driver = Selenium::WebDriver.for :chrome
 driver.navigate.to "https://codefights.com/"
 wait = Selenium::WebDriver::Wait.new(:timeout => 20)
 
-#click login, fill fields, and then login
+#click login, fill fields, and then login with user input. Does not handle fail at the moment
 wait.until{driver.find_element(:css, "body > div:nth-child(10) > div > div > div.-relative > div.-layout-h.-center.-padding-h-32.-margin-t-32.-hide-xs-lte > div > div > div")}
 driver.find_element(:css, "body > div:nth-child(10) > div > div > div.-relative > div.-layout-h.-center.-padding-h-32.-margin-t-32.-hide-xs-lte > div > div > div").click
 wait.until{driver.find_element(:name, "username")}
@@ -26,66 +26,83 @@ driver.find_element(:css, "body > div.modals-container > div > div > div > div >
 
 #wait until login goes through adn then navigate to arcade intro, and then wait for that to load
 element = wait.until { driver.find_element(:css, "body > div:nth-child(10) > div > div.page--header > div > div > div.header-navigation--logo-button.-layout-h.-center.-padding-h-24.-white") }
-driver.navigate.to "https://codefights.com/arcade/intro"
-element = wait.until { driver.find_element(:css, "body > paper-header-panel > div.paper-header-panel > div > div > div > div.arcade-map--wrapper.-layout-v.-space-v-32.-relative > div:nth-child(1) > div.-relative.-clickable > div") }
 
-#get the section elements and section names
-section_elements = driver.find_elements(:class, "arcade-map--topic")
-section_names = driver.find_elements(:class, "arcade-map--topic-title").map{|section| section.text}
 
-#create hash of with key as section name and 
-sections = Hash.new
+#this will gather all the arcade links
+=begin
+#if i start doing more then do this
+#driver.navigate.to "https://codefights.com/arcade"
+#wait.until{driver.find_elements(:class, "arcades-universe--map-header")}
+#arcade_section_links = driver.find_elements(:css, "a").reject{|x| !x.attribute("href").include?("arcade")}.each{|x| p x.attribute("href")}
+=end
 
-#issues with a default expanding and breaking iteration below because it does not register click
-wait.until{driver.find_elements(:class, "-expanded")}
+#since I have only done these two, I made a hash with their name and link
+arcade = {"The Core"=> "https://codefights.com/arcade/code-arcade", "Intro"=> "https://codefights.com/arcade/intro"}
 
-#for each section
-for i in 0..section_elements.length - 1
-  challenges = Hash.new
+#for each arcade section
+arcade.each do |arcade_section_name, arcade_section_link|
+  #navigate to the section adn wait for it to load
+  driver.navigate.to arcade_section_link
+  wait.until { driver.find_element(:css, "body > paper-header-panel > div.paper-header-panel > div > div > div > div.arcade-map--wrapper.-layout-v.-space-v-32.-relative > div:nth-child(1) > div.-relative.-clickable > div") }
 
-  #click the section, wait until loaded, get challenge names and links and store in hash
-  section_elements[i].click #click
-  wait.until{section_elements[i].attribute("class").include?("-expanded")} #wait until loaded
+  #get the section elements and section names
+  section_elements = driver.find_elements(:class, "arcade-map--topic")
+  section_names = driver.find_elements(:class, "arcade-map--topic-title").map{|section| section.text}
 
-  #iterate over the links to solved challenged, create array with uniq values
-  driver.find_elements(:css, "div.-expanded a.-solved").map{|a| a.attribute("href")}.uniq.each do |link|
-    #then do css search with url to get name of challenvge and make hash[challenge_name] = link
-    challenges[driver.find_element(:css, "a[href='#{link.split(".com")[1]}'] h3").text] = link ########need to cut out domain#####
+  #create hash with key as section name and value will be another hash of challenge names and their links
+  sections = Hash.new
+
+  #issues with default expanding and breaking iteration below because it does not register click, so need to wait
+  wait.until{driver.find_elements(:class, "-expanded")}
+  sleep 5
+
+  #for each section
+  for i in 0..section_elements.length - 1
+    challenges = Hash.new
+
+    #click the section, wait until loaded, get challenge names and links and store in hash
+    section_elements[i].click #click
+    wait.until{section_elements[i].attribute("class").include?("-expanded")} #wait until loaded
+
+    #iterate over the links to solved challenged, create array with uniq values
+    driver.find_elements(:css, "div.-expanded a.-solved").map{|a| a.attribute("href")}.uniq.each do |link|
+      #then do css search with url to get name of challenvge and make hash[challenge_name] = link
+      challenges[driver.find_element(:css, "a[href='#{link.split(".com")[1]}'] h3").text] = link ########need to cut out domain#####
+    end
+
+    #finally set the section[section_name] = hash of challenge names and their links
+    sections[section_names[i]] = challenges
   end
 
-  #finally set the section[section_name] = hash of challenge names and their links
-  sections[section_names[i]] = challenges
-end
 
-
-#need to fix above first
-sections.each do |section_name, challenge_hash|
-  challenge_hash.each do |challenge_name, link|
-    #navigate to link and once loaded, create string of code and explanation
-    driver.navigate.to link
-    wait.until{driver.find_element(:class, "header-navigation--title").text == challenge_name}
-    #explanation = wait.until{driver.find_element(:class, "markdown")} #i think im going to seperate this and take it from the github cause its formatted there in .md
-    wait.until{!driver.find_elements(:class, "CodeMirror-line").empty?}
-    code_lines = driver.find_elements(:class, "CodeMirror-line").map!{|line| line.text}
+  #once all the sections adn their challenges are logged, navigate to them and create files
+  sections.each do |section_name, challenge_hash|
+    challenge_hash.each do |challenge_name, link|
+      #navigate to link and once loaded, create string of code 
+      driver.navigate.to link
+      wait.until{driver.find_element(:class, "header-navigation--title").text == challenge_name}
+      wait.until{!driver.find_elements(:class, "CodeMirror-line").empty?}
+      code_lines = driver.find_elements(:class, "CodeMirror-line").map!{|line| line.text}
+      
+      #get path of file on local system and write to it. First create directories if they dont exist 
+      #the root path to where user wants the CodeFights directory should be supplied as cmnd line arg
+      directory_path = "#{ARGV[0]}/CodeFights/#{arcade_section_name}/#{section_name}/#{challenge_name}"
+      code_path = directory_path + "/code.rb"
+      unless File.directory?(directory_path)
+        FileUtils.mkdir_p(directory_path)
+      end
+      File.open(code_path, 'w'){ |file| file.puts(code_lines) }
     
-    #get path of file on local system and write to it. First create directories if they dont exist 
-    directory_path = "#{ARGV[0]}/CodeFights/Intro/#{section_name}/#{challenge_name}"
-    code_path = directory_path + "/code.rb"
-    unless File.directory?(directory_path)
-      FileUtils.mkdir_p(directory_path)
-    end
-    File.open(code_path, 'w'){ |file| file.puts(code_lines) }
-
-  
-    #tehn get problem explanation from github with mechanize/nokogiri
-    #not all match up properly so print when it gives 404 to fix manually  
-    begin
-      page = mechanize.get("https://raw.githubusercontent.com/Lintik/CodeFights-Arcade/master/Intro/#{section_name == "Rains of Reason" ? "Rains of Reasons" : section_name}/#{challenge_name}/README.md")
-      read_me = page.body
-      readme_path = directory_path + "/README.md"
-      File.open(readme_path, 'w'){|file| file.puts(read_me)}
-    rescue Mechanize::ResponseCodeError => e
-      puts "#############**************#{challenge_name} gave error of #{e.response_code}***********##############"
+      #then get problem explanation from github in .md format with mechanize/nokogiri
+      #not all match up properly so print when it gives 404 to fix manually  
+      begin
+        page = mechanize.get("https://raw.githubusercontent.com/Lintik/CodeFights-Arcade/master/#{arcade_section_name}/#{section_name == "Rains of Reason" ? "Rains of Reasons" : section_name}/#{challenge_name}/README.md")
+        read_me = page.body
+        readme_path = directory_path + "/README.md"
+        File.open(readme_path, 'w'){|file| file.puts(read_me)}
+      rescue Mechanize::ResponseCodeError => e
+        puts "#############**************#{challenge_name} gave error of #{e.response_code}***********##############"
+      end
     end
   end
 end
