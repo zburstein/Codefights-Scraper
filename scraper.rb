@@ -98,11 +98,16 @@ arcade.each do |arcade_section_name, arcade_section_link|
       begin
         page = mechanize.get("https://raw.githubusercontent.com/Lintik/CodeFights-Arcade/master/#{arcade_section_name}/#{section_name == "Rains of Reason" ? "Rains of Reasons" : section_name}/#{challenge_name}/README.md")
         read_me = page.body
-        readme_path = directory_path + "/README.md"
-        File.open(readme_path, 'w'){|file| file.puts(read_me)}
       rescue Mechanize::ResponseCodeError => e
         puts "#############**************#{challenge_name} gave error of #{e.response_code}***********##############"
+        read_me = ""
       end
+      
+      #if could not find the readme on github or was blank, just pull the text from codefights
+      #will not be in markdown if retrieved from codefights
+      read_me = driver.find_element(:class, "markdown").text if read_me.length < 5 || read_me.nil? || read_me.empty? 
+      readme_path = directory_path + "/README.md"
+      File.open(readme_path, 'w'){|file| file.puts(read_me)}
     end
   end
 end
